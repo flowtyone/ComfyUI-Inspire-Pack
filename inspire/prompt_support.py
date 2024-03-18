@@ -12,9 +12,11 @@ import torch
 import folder_paths
 import comfy
 import traceback
+import random
 
 from server import PromptServer
 from .libs import utils
+from .backend_support import CheckpointLoaderSimpleShared
 
 prompt_builder_preset = {}
 
@@ -24,6 +26,7 @@ resource_path = os.path.abspath(resource_path)
 
 prompts_path = os.path.join(os.path.dirname(__file__), "..", "prompts")
 prompts_path = os.path.abspath(prompts_path)
+
 
 try:
     pb_yaml_path = os.path.join(resource_path, 'prompt-builder.yaml')
@@ -54,7 +57,7 @@ class LoadPromptsFromDir:
 
     FUNCTION = "doit"
 
-    CATEGORY = "InspirePack/prompt"
+    CATEGORY = "InspirePack/Prompt"
 
     def doit(self, prompt_dir):
         global prompts_path
@@ -109,7 +112,7 @@ class LoadPromptsFromFile:
 
     FUNCTION = "doit"
 
-    CATEGORY = "InspirePack/prompt"
+    CATEGORY = "InspirePack/Prompt"
 
     def doit(self, prompt_file):
         prompt_path = os.path.join(prompts_path, prompt_file)
@@ -164,7 +167,7 @@ class LoadSinglePromptFromFile:
 
     FUNCTION = "doit"
 
-    CATEGORY = "InspirePack/prompt"
+    CATEGORY = "InspirePack/Prompt"
 
     def doit(self, prompt_file, index):
         prompt_path = os.path.join(prompts_path, prompt_file)
@@ -205,7 +208,7 @@ class UnzipPrompt:
 
     FUNCTION = "doit"
 
-    CATEGORY = "InspirePack/prompt"
+    CATEGORY = "InspirePack/Prompt"
 
     def doit(self, zipped_prompt):
         return zipped_prompt
@@ -227,7 +230,7 @@ class ZipPrompt:
 
     FUNCTION = "doit"
 
-    CATEGORY = "InspirePack/prompt"
+    CATEGORY = "InspirePack/Prompt"
 
     def doit(self, positive, negative, name_opt=""):
         return ((positive, negative, name_opt), )
@@ -251,7 +254,7 @@ class PromptExtractor:
                 "hidden": {"unique_id": "UNIQUE_ID"},
                 }
 
-    CATEGORY = "InspirePack/prompt"
+    CATEGORY = "InspirePack/Prompt"
 
     RETURN_TYPES = ("STRING", "STRING")
     RETURN_NAMES = ("positive", "negative")
@@ -316,7 +319,7 @@ class GlobalSeed:
     def INPUT_TYPES(s):
         return {
             "required": {
-                "value": ("INT", {"default": 0, "min": 0, "max": 1125899906842624}),
+                "value": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
                 "mode": ("BOOLEAN", {"default": True, "label_on": "control_before_generate", "label_off": "control_after_generate"}),
                 "action": (["fixed", "increment", "decrement", "randomize",
                             "increment for each node", "decrement for each node", "randomize for each node"], ),
@@ -424,8 +427,8 @@ class WildcardEncodeInspire:
                         "clip": ("CLIP",),
                         "token_normalization": (["none", "mean", "length", "length+mean"], ),
                         "weight_interpretation": (["comfy", "A1111", "compel", "comfy++", "down_weight"], {'default': 'comfy++'}),
-                        "wildcard_text": ("STRING", {"multiline": True, "dynamicPrompts": False, 'placeholder': 'Wildcard Prmopt (User Input)'}),
-                        "populated_text": ("STRING", {"multiline": True, "dynamicPrompts": False, 'placeholder': 'Populated Prmopt (Will be generated automatically)'}),
+                        "wildcard_text": ("STRING", {"multiline": True, "dynamicPrompts": False, 'placeholder': 'Wildcard Prompt (User Input)'}),
+                        "populated_text": ("STRING", {"multiline": True, "dynamicPrompts": False, 'placeholder': 'Populated Prompt (Will be generated automatically)'}),
                         "mode": ("BOOLEAN", {"default": True, "label_on": "Populate", "label_off": "Fixed"}),
                         "Select to add LoRA": (["Select the LoRA to add to the text"] + folder_paths.get_filename_list("loras"), ),
                         "Select to add Wildcard": (["Select the Wildcard to add to the text"],),
@@ -446,11 +449,71 @@ class WildcardEncodeInspire:
 
         if 'ImpactWildcardEncode' not in nodes.NODE_CLASS_MAPPINGS:
             utils.try_install_custom_node('https://github.com/ltdrdata/ComfyUI-Impact-Pack',
-                                          "To use 'WildcardEncodeInspire' node, 'Impact Pack' extension is required.")
-            raise Exception(f"[ERROR] To use WildcardEncodeInspire, you need to install 'Impact Pack'")
+                                          "To use 'Wildcard Encode (Inspire)' node, 'Impact Pack' extension is required.")
+            raise Exception(f"[ERROR] To use 'Wildcard Encode (Inspire)', you need to install 'Impact Pack'")
 
         model, clip, conditioning = nodes.NODE_CLASS_MAPPINGS['ImpactWildcardEncode'].process_with_loras(wildcard_opt=populated, model=kwargs['model'], clip=kwargs['clip'], clip_encoder=clip_encoder)
         return (model, clip, conditioning, populated)
+
+
+class MakeBasicPipe:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required": {
+                        "ckpt_name": (folder_paths.get_filename_list("checkpoints"), ),
+                        "ckpt_key_opt": ("STRING", {"multiline": False, "placeholder": "If empty, use 'ckpt_name' as the key." }),
+
+                        "positive_wildcard_text": ("STRING", {"multiline": True, "dynamicPrompts": False, 'placeholder': 'Positive Prompt (User Input)'}),
+                        "negative_wildcard_text": ("STRING", {"multiline": True, "dynamicPrompts": False, 'placeholder': 'Negative Prompt (User Input)'}),
+
+                        "Add selection to": ("BOOLEAN", {"default": True, "label_on": "Positive", "label_off": "Negative"}),
+                        "Select to add LoRA": (["Select the LoRA to add to the text"] + folder_paths.get_filename_list("loras"),),
+                        "Select to add Wildcard": (["Select the Wildcard to add to the text"],),
+                        "wildcard_mode": ("BOOLEAN", {"default": True, "label_on": "Populate", "label_off": "Fixed"}),
+
+                        "positive_populated_text": ("STRING", {"multiline": True, "dynamicPrompts": False, 'placeholder': 'Populated Positive Prompt (Will be generated automatically)'}),
+                        "negative_populated_text": ("STRING", {"multiline": True, "dynamicPrompts": False, 'placeholder': 'Populated Negative Prompt (Will be generated automatically)'}),
+
+                        "token_normalization": (["none", "mean", "length", "length+mean"],),
+                        "weight_interpretation": (["comfy", "A1111", "compel", "comfy++", "down_weight"], {'default': 'comfy++'}),
+
+                        "stop_at_clip_layer": ("INT", {"default": -2, "min": -24, "max": -1, "step": 1}),
+            
+                        "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
+                    },
+                "optional": {
+                        "vae_opt": ("VAE",)
+                    },
+                }
+
+    CATEGORY = "InspirePack/Prompt"
+
+    RETURN_TYPES = ("BASIC_PIPE", "STRING")
+    RETURN_NAMES = ("basic_pipe", "cache_key")
+    FUNCTION = "doit"
+
+    def doit(self, **kwargs):
+        pos_populated = kwargs['positive_populated_text']
+        neg_populated = kwargs['negative_populated_text']
+
+        clip_encoder = BNK_EncoderWrapper(kwargs['token_normalization'], kwargs['weight_interpretation'])
+
+        if 'ImpactWildcardEncode' not in nodes.NODE_CLASS_MAPPINGS:
+            utils.try_install_custom_node('https://github.com/ltdrdata/ComfyUI-Impact-Pack',
+                                          "To use 'Make Basic Pipe (Inspire)' node, 'Impact Pack' extension is required.")
+            raise Exception(f"[ERROR] To use 'Make Basic Pipe (Inspire)', you need to install 'Impact Pack'")
+
+        model, clip, vae, key = CheckpointLoaderSimpleShared().doit(ckpt_name=kwargs['ckpt_name'], key_opt=kwargs['ckpt_key_opt'])
+        clip = nodes.CLIPSetLastLayer().set_last_layer(clip, kwargs['stop_at_clip_layer'])[0]
+        model, clip, positive = nodes.NODE_CLASS_MAPPINGS['ImpactWildcardEncode'].process_with_loras(wildcard_opt=pos_populated, model=model, clip=clip, clip_encoder=clip_encoder)
+        model, clip, negative = nodes.NODE_CLASS_MAPPINGS['ImpactWildcardEncode'].process_with_loras(wildcard_opt=neg_populated, model=model, clip=clip, clip_encoder=clip_encoder)
+
+        if 'vae_opt' in kwargs:
+            vae = kwargs['vae_opt']
+
+        basic_pipe = model, clip, vae, positive, negative
+
+        return (basic_pipe, key)
 
 
 class PromptBuilder:
@@ -612,6 +675,81 @@ class CLIPTextEncodeWithWeight:
         return ([[cond, {"pooled_output": pooled}]], )
 
 
+class RandomGeneratorForList:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required": {
+                    "signal": (utils.any_typ,),
+                    "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
+                    },
+                "hidden": {"unique_id": "UNIQUE_ID"},
+                }
+
+    RETURN_TYPES = (utils.any_typ, "INT",)
+    RETURN_NAMES = ("signal", "random_value",)
+
+    FUNCTION = "doit"
+
+    CATEGORY = "InspirePack/Util"
+
+    def doit(self, signal, seed, unique_id):
+        if unique_id not in list_counter_map:
+            count = 0
+        else:
+            count = list_counter_map[unique_id]
+
+        list_counter_map[unique_id] = count + 1
+
+        rn = random.Random()
+        rn.seed(seed + count)
+        new_seed = random.randint(0, 1125899906842624)
+
+        return (signal, new_seed)
+
+
+class RemoveControlNet:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required": {"conditioning": ("CONDITIONING", )}}
+    RETURN_TYPES = ("CONDITIONING",)
+    FUNCTION = "doit"
+
+    CATEGORY = "InspirePack/Util"
+
+    def doit(self, conditioning):
+        c = []
+        for t in conditioning:
+            n = [t[0], t[1].copy()]
+
+            if 'control' in n[1]:
+                del n[1]['control']
+            if 'control_apply_to_uncond' in n[1]:
+                del n[1]['control_apply_to_uncond']
+            c.append(n)
+
+        return (c, )
+
+
+class RemoveControlNetFromRegionalPrompts:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required": {"regional_prompts": ("REGIONAL_PROMPTS", )}}
+    RETURN_TYPES = ("REGIONAL_PROMPTS",)
+    FUNCTION = "doit"
+
+    CATEGORY = "InspirePack/Util"
+
+    def doit(self, regional_prompts):
+        rcn = RemoveControlNet()
+        res = []
+        for rp in regional_prompts:
+            _, _, _, _, positive, negative = rp.sampler.params
+            positive, negative = rcn.doit(positive)[0], rcn.doit(negative)[0]
+            sampler = rp.sampler.clone_with_conditionings(positive, negative)
+            res.append(rp.clone_with_sampler(sampler))
+        return (res, )
+
+
 NODE_CLASS_MAPPINGS = {
     "LoadPromptsFromDir //Inspire": LoadPromptsFromDir,
     "LoadPromptsFromFile //Inspire": LoadPromptsFromFile,
@@ -627,6 +765,10 @@ NODE_CLASS_MAPPINGS = {
     "SeedExplorer //Inspire": SeedExplorer,
     "ListCounter //Inspire": ListCounter,
     "CLIPTextEncodeWithWeight //Inspire": CLIPTextEncodeWithWeight,
+    "RandomGeneratorForList //Inspire": RandomGeneratorForList,
+    "MakeBasicPipe //Inspire": MakeBasicPipe,
+    "RemoveControlNet //Inspire": RemoveControlNet,
+    "RemoveControlNetFromRegionalPrompts //Inspire": RemoveControlNetFromRegionalPrompts,
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     "LoadPromptsFromDir //Inspire": "Load Prompts From Dir (Inspire)",
@@ -642,5 +784,9 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "PromptBuilder //Inspire": "Prompt Builder (Inspire)",
     "SeedExplorer //Inspire": "Seed Explorer (Inspire)",
     "ListCounter //Inspire": "List Counter (Inspire)",
-    "CLIPTextEncodeWithWeight //Inspire": "CLIPTextEncodeWithWeight (Inspire)"
+    "CLIPTextEncodeWithWeight //Inspire": "CLIPTextEncodeWithWeight (Inspire)",
+    "RandomGeneratorForList //Inspire": "Random Generator for List (Inspire)",
+    "MakeBasicPipe //Inspire": "Make Basic Pipe (Inspire)",
+    "RemoveControlNet //Inspire": "Remove ControlNet (Inspire)",
+    "RemoveControlNetFromRegionalPrompts //Inspire": "Remove ControlNet [RegionalPrompts] (Inspire)"
 }

@@ -2,6 +2,8 @@
 This repository offers various extension nodes for ComfyUI. Nodes here have different characteristics compared to those in the ComfyUI Impact Pack. The Impact Pack has become too large now...
 
 ## Notice:
+* V0.64 add sigma_factor to RegionalPrompt... nodes required Impact Pack V4.76 or later.
+* V0.62 support faceid in Regional IPAdapter
 * V0.48 optimized wildcard node. This update requires Impact Pack V4.39.2 or later.
 * V0.13.2 isn't compatible with old ControlNet Auxiliary Preprocessor. If you will use `MediaPipeFaceMeshDetectorProvider` update to latest version(Sep. 17th).
 * WARN: If you use version **0.12 to 0.12.2** without a GlobalSeed node, your workflow's seed may have been erased. Please update immediately.
@@ -23,7 +25,7 @@ This repository offers various extension nodes for ComfyUI. Nodes here have diff
     * `DW Preprocessor Provider (SEGS)`, `MiDaS Depth Map Preprocessor Provider (SEGS)`, `LeReS Depth Map Preprocessor Provider (SEGS)`, 
       `MediaPipe FaceMesh Preprocessor Provider (SEGS)`, `HED Preprocessor Provider (SEGS)`, `Fake Scribble Preprocessor (SEGS)`, 
       `AnimeLineArt Preprocessor Provider (SEGS)`, `Manga2Anime LineArt Preprocessor Provider (SEGS)`, `LineArt Preprocessor Provider (SEGS)`,
-      `Color Preprocessor Provider (SEGS)`, `Inpaint Preprocessor Provider (SEGS)`, `Tile Preprocessor Provider (SEGS)`, 
+      `Color Preprocessor Provider (SEGS)`, `Inpaint Preprocessor Provider (SEGS)`, `Tile Preprocessor Provider (SEGS)`, `MeshGraphormer Depth Map Preprocessor Provider (SEGS)`  
     * `MediaPipeFaceMeshDetectorProvider`: This node provides `BBOX_DETECTOR` and `SEGM_DETECTOR` that can be used in Impact Pack's Detector using the `MediaPipe-FaceMesh Preprocessor` of ControlNet Auxiliary Preprocessors.
 
 * A1111 Compatibility support - These nodes assists in replicating the creation of A1111 in ComfyUI exactly.
@@ -68,6 +70,10 @@ This repository offers various extension nodes for ComfyUI. Nodes here have diff
     * In the `seed_prompt`, the first seed is considered the initial seed, and the reflection rate is omitted, always defaulting to 1.0.
     * Each prompt is separated by a comma, and from the second seed onwards, it should follow the format `seed:strength`.
     * Pressing the "Add to prompt" button will append `additional_seed:additional_strength` to the prompt.
+  * `Random Generator for List (Inspire)`: When connecting the list output to the signal input, this node generates random values for all items in the list.
+  * `Make Basic Pipe (Inspire)`: This is a node that creates a BASIC_PIPE using Wildcard Encode. The `Add select to` determines whether the selected item from the `Select to...` combo will be input as positive wildcard text or negative wildcard text.
+  * `Remove ControlNet (Inspire)`, `Remove ControlNet [RegionalPrompts] (Inspire)`: Remove ControlNet from CONDITIONING or REGIONAL_PROMPTS.
+    * `Remove ControlNet [RegionalPrompts] (Inspire)` requires Impact Pack V4.73.1 or above.
 
 * Regional Nodes - These node simplifies the application of prompts by region.
   * Regional Sampler - These nodes assists in the easy utilization of the regional sampler in the `Impact Pack`.
@@ -91,6 +97,8 @@ This repository offers various extension nodes for ComfyUI. Nodes here have diff
   * `Load Image (Inspire)`: This node is similar to LoadImage, but the loaded image information is stored in the workflow. The image itself is stored in the workflow, making it easier to reproduce image generation on other computers.
   * `Change Image Batch Size (Inspire)`: Change Image Batch Size
     * `simple`: if the `batch_size` is larger than the batch size of the input image, the last frame will be duplicated. If it is smaller, it will be simply cropped.
+  * `Change Latent Batch Size (Inspire)`: Change Latent Batch Size
+  * `ImageBatchSplitter //Inspire`, `LatentBatchSplitter //Inspire`: The script divides a batch of images/latents into individual images/latents, each with a quantity equal to the specified `split_count`. An additional output slot is added for each `split_count`. If the number of images/latents exceeds the `split_count`, the remaining ones are returned as the "remained" output.
   
 * KSampler Progress - In KSampler, the sampling process generates latent batches. By using `Video Combine` node from [ComfyUI-VideoHelperSuite](https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite), you can create a video from the progress.
 
@@ -107,9 +115,14 @@ This repository offers various extension nodes for ComfyUI. Nodes here have diff
   * `Shared Checkpoint Loader (Inspire)`: When loading a checkpoint through this loader, it is automatically cached in the backend cache. Additionally, if it is already cached, it retrieves it from the cache instead of loading it anew.
     * When `key_opt` is empty, the `ckpt_name` is set as the cache key. The cache key output can be used for deletion purposes with Remove Back End.
     * This node resolves the issue of reloading checkpoints during workflow switching.
+  * `Stable Cascade Checkpoint Loader (Inspire)`: This node provides a feature that allows you to load the `stage_b` and `stage_c` checkpoints of Stable Cascade at once, and it also provides a backend caching feature, optionally.
 
 * Conditioning - Nodes for conditionings
   * `Concat Conditionings with Multiplier (Inspire)`: Concatenating an arbitrary number of Conditionings while applying a multiplier for each Conditioning. The multiplier depends on `comfy_PoP`, so [comfy_PoP](https://github.com/picturesonpictures/comfy_PoP) must be installed.
+
+* Models - Nodes for models
+  * `IPAdapter Model Helper (Inspire)`: This provides presets that allow for easy loading of the IPAdapter related models. However, it is essential for the model's name to be accurate.
+    * You can download the appropriate model through ComfyUI-Manager.
 
 * Util - Utilities
   * `Float Range (Inspire)`: Create a float list that increases the value by `step` from `start` to `stop`. A list as large as the maximum limit is created, and when `ensure_end` is enabled, the last value of the list becomes the stop value.
@@ -128,3 +141,5 @@ jags111/[efficiency-nodes-comfyui](https://github.com/jags111/ComfyUI-Jags-workf
 Fannovel16/[comfyui_controlnet_aux](https://github.com/Fannovel16/comfyui_controlnet_aux) - The wrapper for the controlnet preprocessor in the Inspire Pack depends on these nodes.
 
 Kosinkadink/[ComfyUI-Advanced-Controlnet](https://github.com/Kosinkadink/ComfyUI-Advanced-ControlNet) - `Load Images From Dir (Inspire)` code is came from here. 
+
+Trung0246/[ComfyUI-0246](https://github.com/Trung0246/ComfyUI-0246) - Nice bypass hack!

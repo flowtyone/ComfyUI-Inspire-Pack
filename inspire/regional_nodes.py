@@ -2,9 +2,7 @@ import traceback
 
 import comfy
 import nodes
-import numpy as np
 import torch
-import torch.nn.functional as F
 from . import prompt_support
 from .libs import utils
 
@@ -21,6 +19,7 @@ class RegionalPromptSimple:
                 "scheduler": (comfy.samplers.KSampler.SCHEDULERS,),
                 "wildcard_prompt": ("STRING", {"multiline": True, "dynamicPrompts": False, "placeholder": "wildcard prompt"}),
                 "controlnet_in_pipe": ("BOOLEAN", {"default": False, "label_on": "Keep", "label_off": "Override"}),
+                "sigma_factor": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 10.0, "step": 0.01}),
             },
         }
 
@@ -29,7 +28,7 @@ class RegionalPromptSimple:
 
     CATEGORY = "InspirePack/Regional"
 
-    def doit(self, basic_pipe, mask, cfg, sampler_name, scheduler, wildcard_prompt, controlnet_in_pipe=False):
+    def doit(self, basic_pipe, mask, cfg, sampler_name, scheduler, wildcard_prompt, controlnet_in_pipe=False, sigma_factor=1.0):
         if 'RegionalPrompt' not in nodes.NODE_CLASS_MAPPINGS:
             utils.try_install_custom_node('https://github.com/ltdrdata/ComfyUI-Impact-Pack',
                                           "To use 'RegionalPromptSimple' node, 'Impact Pack' extension is required.")
@@ -61,7 +60,7 @@ class RegionalPromptSimple:
 
         basic_pipe = model, clip, vae, new_positive, negative
 
-        sampler = kap.doit(cfg, sampler_name, scheduler, basic_pipe)[0]
+        sampler = kap.doit(cfg, sampler_name, scheduler, basic_pipe, sigma_factor=sigma_factor)[0]
         regional_prompts = rp.doit(mask, sampler)[0]
 
         return (regional_prompts, )
@@ -95,6 +94,7 @@ class RegionalPromptColorMask:
                 "scheduler": (comfy.samplers.KSampler.SCHEDULERS,),
                 "wildcard_prompt": ("STRING", {"multiline": True, "dynamicPrompts": False, "placeholder": "wildcard prompt"}),
                 "controlnet_in_pipe": ("BOOLEAN", {"default": False, "label_on": "Keep", "label_off": "Override"}),
+                "sigma_factor": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 10.0, "step": 0.01}),
             },
         }
 
@@ -103,9 +103,9 @@ class RegionalPromptColorMask:
 
     CATEGORY = "InspirePack/Regional"
 
-    def doit(self, basic_pipe, color_mask, mask_color, cfg, sampler_name, scheduler, wildcard_prompt, controlnet_in_pipe=False):
+    def doit(self, basic_pipe, color_mask, mask_color, cfg, sampler_name, scheduler, wildcard_prompt, controlnet_in_pipe=False, sigma_factor=1.0):
         mask = color_to_mask(color_mask, mask_color)
-        rp = RegionalPromptSimple().doit(basic_pipe, mask, cfg, sampler_name, scheduler, wildcard_prompt, controlnet_in_pipe)[0]
+        rp = RegionalPromptSimple().doit(basic_pipe, mask, cfg, sampler_name, scheduler, wildcard_prompt, controlnet_in_pipe, sigma_factor=sigma_factor)[0]
         return (rp, mask)
 
 
@@ -166,8 +166,11 @@ class ToIPAdapterPipe:
         return {
             "required": {
                 "ipadapter": ("IPADAPTER", ),
+                "model": ("MODEL",),
+            },
+            "optional": {
                 "clip_vision": ("CLIP_VISION",),
-                "model": ("MODEL", ),
+                "insightface": ("INSIGHTFACE",),
             }
         }
 
@@ -176,8 +179,8 @@ class ToIPAdapterPipe:
 
     CATEGORY = "InspirePack/Util"
 
-    def doit(self, ipadapter, clip_vision, model):
-        pipe = ipadapter, clip_vision, model
+    def doit(self, ipadapter, model, clip_vision, insightface=None):
+        pipe = ipadapter, model, clip_vision, insightface, lambda x: x
 
         return (pipe,)
 
@@ -191,17 +194,19 @@ class FromIPAdapterPipe:
             }
         }
 
-    RETURN_TYPES = ("IPADAPTER", "CLIP_VISION", "MODEL")
+    RETURN_TYPES = ("IPADAPTER", "MODEL", "CLIP_VISION", "INSIGHTFACE")
+    RETURN_NAMES = ("ipadapter", "model", "clip_vision", "insight_face")
     FUNCTION = "doit"
 
     CATEGORY = "InspirePack/Util"
 
     def doit(self, ipadapter_pipe):
-        return ipadapter_pipe
+        ipadapter, model, clip_vision, insightface, _ = ipadapter_pipe
+        return ipadapter, model, clip_vision, insightface
 
 
 class IPAdapterConditioning:
-    def __init__(self, mask, weight, weight_type, noise=None, image=None, embeds=None, start_at=0.0, end_at=1.0, unfold_batch=False):
+    def __init__(self, mask, weight, weight_type, noise=None, image=None, embeds=None, start_at=0.0, end_at=1.0, unfold_batch=False, faceid_v2=False, weight_v2=False):
         self.mask = mask
         self.image = image
         self.embeds = embeds
@@ -211,12 +216,16 @@ class IPAdapterConditioning:
         self.start_at = start_at
         self.end_at = end_at
         self.unfold_batch = unfold_batch
+        self.faceid_v2 = faceid_v2
+        self.weight_v2 = weight_v2
 
-    def doit(self, ipadapter, clip_vision, model):
+    def doit(self, ipadapter_pipe):
+        ipadapter, model, clip_vision, insightface, _ = ipadapter_pipe
+
         if 'IPAdapterApply' not in nodes.NODE_CLASS_MAPPINGS:
-            utils.try_install_custom_node('https://github.com/ltdrdata/ComfyUI-Impact-Pack',
-                                          "To use 'Regional IPAdapter' node, 'Impact Pack' extension is required.")
-            raise Exception(f"[ERROR] To use Regional IPAdapter, you need to install 'ComfyUI_IPAdapter_plus'")
+            utils.try_install_custom_node('https://github.com/cubiq/ComfyUI_IPAdapter_plus',
+                                          "To use 'Regional IPAdapter' node, 'ComfyUI IPAdapter Plus' extension is required.")
+            raise Exception(f"[ERROR] To use IPAdapterModelHelper, you need to install 'ComfyUI IPAdapter Plus'")
 
         obj = nodes.NODE_CLASS_MAPPINGS['IPAdapterApply']
 
@@ -226,7 +235,7 @@ class IPAdapterConditioning:
         model = obj().apply_ipadapter(ipadapter, model, self.weight, clip_vision=clip_vision, image=self.image,
                                       embeds=self.embeds, weight_type=self.weight_type, noise=self.noise,
                                       attn_mask=self.mask, start_at=self.start_at, end_at=self.end_at,
-                                      unfold_batch=self.unfold_batch)[0]
+                                      unfold_batch=self.unfold_batch, insightface=insightface, faceid_v2=self.faceid_v2, weight_v2=self.weight_v2)[0]
 
         return model
 
@@ -246,6 +255,10 @@ class RegionalIPAdapterMask:
                 "end_at": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.001}),
                 "unfold_batch": ("BOOLEAN", {"default": False}),
             },
+            "optional": {
+                "faceid_v2": ("BOOLEAN", { "default": False }),
+                "weight_v2": ("FLOAT", { "default": 1.0, "min": -1, "max": 3, "step": 0.05 }),
+            }
         }
 
     RETURN_TYPES = ("REGIONAL_IPADAPTER", )
@@ -253,8 +266,8 @@ class RegionalIPAdapterMask:
 
     CATEGORY = "InspirePack/Regional"
 
-    def doit(self, mask, image, weight, noise, weight_type, start_at=0.0, end_at=1.0, unfold_batch=False):
-        cond = IPAdapterConditioning(mask, weight, weight_type, noise=noise, image=image, start_at=start_at, end_at=end_at, unfold_batch=unfold_batch)
+    def doit(self, mask, image, weight, noise, weight_type, start_at=0.0, end_at=1.0, unfold_batch=False, faceid_v2=False, weight_v2=False):
+        cond = IPAdapterConditioning(mask, weight, weight_type, noise=noise, image=image, start_at=start_at, end_at=end_at, unfold_batch=unfold_batch, faceid_v2=faceid_v2, weight_v2=weight_v2)
         return (cond, )
 
 
@@ -274,6 +287,10 @@ class RegionalIPAdapterColorMask:
                 "end_at": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.001}),
                 "unfold_batch": ("BOOLEAN", {"default": False}),
             },
+            "optional": {
+                "faceid_v2": ("BOOLEAN", { "default": False }),
+                "weight_v2": ("FLOAT", { "default": 1.0, "min": -1, "max": 3, "step": 0.05 })
+            }
         }
 
     RETURN_TYPES = ("REGIONAL_IPADAPTER", "MASK")
@@ -281,9 +298,9 @@ class RegionalIPAdapterColorMask:
 
     CATEGORY = "InspirePack/Regional"
 
-    def doit(self, color_mask, mask_color, image, weight, noise, weight_type, start_at=0.0, end_at=1.0, unfold_batch=False):
+    def doit(self, color_mask, mask_color, image, weight, noise, weight_type, start_at=0.0, end_at=1.0, unfold_batch=False, faceid_v2=False, weight_v2=False):
         mask = color_to_mask(color_mask, mask_color)
-        cond = IPAdapterConditioning(mask, weight, weight_type, noise=noise, image=image, start_at=start_at, end_at=end_at, unfold_batch=unfold_batch)
+        cond = IPAdapterConditioning(mask, weight, weight_type, noise=noise, image=image, start_at=start_at, end_at=end_at, unfold_batch=unfold_batch, faceid_v2=faceid_v2, weight_v2=weight_v2)
         return (cond, mask)
 
 
@@ -357,12 +374,13 @@ class ApplyRegionalIPAdapters:
 
     def doit(self, **kwargs):
         ipadapter_pipe = kwargs['ipadapter_pipe']
-        ipadapter, clip_vision, model = ipadapter_pipe
+        ipadapter, model, clip_vision, insightface, lora_loader = ipadapter_pipe
 
         del kwargs['ipadapter_pipe']
 
         for k, v in kwargs.items():
-            model = v.doit(ipadapter, clip_vision, model)
+            ipadapter_pipe = ipadapter, model, clip_vision, insightface, lora_loader
+            model = v.doit(ipadapter_pipe)
 
         return (model, )
 
