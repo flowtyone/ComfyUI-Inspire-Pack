@@ -24,8 +24,9 @@ prompt_builder_preset = {}
 resource_path = os.path.join(os.path.dirname(__file__), "..", "resources")
 resource_path = os.path.abspath(resource_path)
 
-prompts_path = os.path.join(os.path.dirname(__file__), "..", "prompts")
-prompts_path = os.path.abspath(prompts_path)
+#prompts_path = os.path.join(os.path.dirname(__file__), "..", "prompts")
+#prompts_path = os.path.abspath(prompts_path)
+prompts_path = folder_paths.get_input_directory()
 
 
 try:
@@ -46,11 +47,17 @@ class LoadPromptsFromDir:
     def INPUT_TYPES(cls):
         global prompts_path
         try:
-            prompt_dirs = [d for d in os.listdir(prompts_path) if os.path.isdir(os.path.join(prompts_path, d))]
+            prompt_dirs = [d for d in os.listdir(prompts_path)]
         except Exception:
             prompt_dirs = []
 
         return {"required": {"prompt_dir": (prompt_dirs,)}}
+
+    @classmethod
+    def VALIDATE_INPUTS(s, prompt_dir):
+        if not folder_paths.exists_annotated_filepath(prompt_dir):
+            return "Invalid prompt dir: {}".format(prompt_dir)
+        return True
 
     RETURN_TYPES = ("ZIPPED_PROMPT",)
     OUTPUT_IS_LIST = (True,)
@@ -60,9 +67,9 @@ class LoadPromptsFromDir:
     CATEGORY = "InspirePack/Prompt"
 
     def doit(self, prompt_dir):
-        global prompts_path
-        prompt_dir = os.path.join(prompts_path, prompt_dir)
-        files = [f for f in os.listdir(prompt_dir) if f.endswith(".txt")]
+        #global prompts_path
+        prompt_dir = folder_paths.get_annotated_filepath(prompt_dir) #os.path.join(prompts_path, prompt_dir)
+        files = [f for f in os.listdir(prompt_dir)]
         files.sort()
 
         prompts = []
@@ -94,18 +101,24 @@ class LoadPromptsFromFile:
     @classmethod
     def INPUT_TYPES(cls):
         global prompts_path
-        try:
-            prompt_files = []
-            for root, dirs, files in os.walk(prompts_path):
-                for file in files:
-                    if file.endswith(".txt"):
-                        file_path = os.path.join(root, file)
-                        rel_path = os.path.relpath(file_path, prompts_path)
-                        prompt_files.append(rel_path)
-        except Exception:
-            prompt_files = []
+        # try:
+        #     prompt_files = []
+        #     for root, dirs, files in os.walk(prompts_path):
+        #         for file in files:
+        #             if file.endswith(".txt"):
+        #                 file_path = os.path.join(root, file)
+        #                 rel_path = os.path.relpath(file_path, prompts_path)
+        #                 prompt_files.append(rel_path)
+        # except Exception:
+        #     prompt_files = []
 
-        return {"required": {"prompt_file": (prompt_files,)}}
+        return {"required": {"prompt_file": ([f for f in os.listdir(prompts_path)],)}}
+
+    @classmethod
+    def VALIDATE_INPUTS(s, prompt_file):
+        if not folder_paths.exists_annotated_filepath(prompt_file):
+            return "Invalid prompt file: {}".format(prompt_file)
+        return True
 
     RETURN_TYPES = ("ZIPPED_PROMPT",)
     OUTPUT_IS_LIST = (True,)
@@ -115,7 +128,7 @@ class LoadPromptsFromFile:
     CATEGORY = "InspirePack/Prompt"
 
     def doit(self, prompt_file):
-        prompt_path = os.path.join(prompts_path, prompt_file)
+        prompt_path = folder_paths.get_annotated_filepath(prompt_file) #os.path.join(prompts_path, prompt_file)
 
         prompts = []
         try:
@@ -145,22 +158,28 @@ class LoadSinglePromptFromFile:
     @classmethod
     def INPUT_TYPES(cls):
         global prompts_path
-        try:
-            prompt_files = []
-            for root, dirs, files in os.walk(prompts_path):
-                for file in files:
-                    if file.endswith(".txt"):
-                        file_path = os.path.join(root, file)
-                        rel_path = os.path.relpath(file_path, prompts_path)
-                        prompt_files.append(rel_path)
-        except Exception:
-            prompt_files = []
+        # try:
+        #     prompt_files = []
+        #     for root, dirs, files in os.walk(prompts_path):
+        #         for file in files:
+        #             if file.endswith(".txt"):
+        #                 file_path = os.path.join(root, file)
+        #                 rel_path = os.path.relpath(file_path, prompts_path)
+        #                 prompt_files.append(rel_path)
+        # except Exception:
+        #     prompt_files = []
 
         return {"required": {
-            "prompt_file": (prompt_files,),
+            "prompt_file": ([f for f in os.listdir(prompts_path)],),
             "index": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
             }
         }
+
+    @classmethod
+    def VALIDATE_INPUTS(s, prompt_file):
+        if not folder_paths.exists_annotated_filepath(prompt_file):
+            return "Invalid prompt file: {}".format(prompt_file)
+        return True
 
     RETURN_TYPES = ("ZIPPED_PROMPT",)
     OUTPUT_IS_LIST = (True,)
@@ -170,7 +189,7 @@ class LoadSinglePromptFromFile:
     CATEGORY = "InspirePack/Prompt"
 
     def doit(self, prompt_file, index):
-        prompt_path = os.path.join(prompts_path, prompt_file)
+        prompt_path = folder_paths.get_annotated_filepath(prompt_file) #os.path.join(prompts_path, prompt_file)
 
         prompts = []
         try:
