@@ -2,6 +2,7 @@
 This repository offers various extension nodes for ComfyUI. Nodes here have different characteristics compared to those in the ComfyUI Impact Pack. The Impact Pack has become too large now...
 
 ## Notice:
+* V0.69 incompatible with the outdated **ComfyUI IPAdapter Plus**. (A version dated March 24th or later is required.)
 * V0.64 add sigma_factor to RegionalPrompt... nodes required Impact Pack V4.76 or later.
 * V0.62 support faceid in Regional IPAdapter
 * V0.48 optimized wildcard node. This update requires Impact Pack V4.39.2 or later.
@@ -110,6 +111,8 @@ This repository offers various extension nodes for ComfyUI. Nodes here have diff
     * `signal_opt` is used to control the order of execution for this node; it will still run without a `signal_opt` input.
     * When using '*' as the key, it clears all data.
   * `Show Cached Info (Inspire)`: Displays information about cached data.
+    * Default tag cache size is 5. You can edit the default size of each tag in `cache_settings.json`.
+    * Runtime tag cache size can be modified on the `Show Cached Info (Inspire)` node. For example: `ckpt: 10`.
   * `Cache Backend Data [NumberKey] (Inspire)`, `Retrieve Backend Data [NumberKey] (Inspire)`, `Remove Backend Data [NumberKey] (Inspire)`: These nodes are provided for convenience in the automation process, allowing the use of numbers as keys.
   * `Cache Backend Data List (Inspire)`, `Cache Backend Data List [NumberKey] (Inspire)`: This node allows list input for backend cache. Conversely, nodes like `Cache Backend Data [NumberKey] (Inspire)` that do not accept list input will attempt to cache redundantly and overwrite existing data if provided with a list input. Therefore, it is necessary to use a unique key for each element to prevent this. This node caches the combined list. When retrieving cached backend data through this node, the output is in the form of a list.
   * `Shared Checkpoint Loader (Inspire)`: When loading a checkpoint through this loader, it is automatically cached in the backend cache. Additionally, if it is already cached, it retrieves it from the cache instead of loading it anew.
@@ -143,3 +146,5 @@ Fannovel16/[comfyui_controlnet_aux](https://github.com/Fannovel16/comfyui_contro
 Kosinkadink/[ComfyUI-Advanced-Controlnet](https://github.com/Kosinkadink/ComfyUI-Advanced-ControlNet) - `Load Images From Dir (Inspire)` code is came from here. 
 
 Trung0246/[ComfyUI-0246](https://github.com/Trung0246/ComfyUI-0246) - Nice bypass hack!
+
+cubiq/[ComfyUI_IPAdapter_plus](https://github.com/cubiq/ComfyUI_IPAdapter_plus) - IPAdapter related nodes depend on this extension.

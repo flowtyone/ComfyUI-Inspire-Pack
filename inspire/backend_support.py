@@ -1,14 +1,26 @@
-from .libs.utils import any_typ
-from server import PromptServer
+import json
+import os
+
 import folder_paths
 import nodes
+from server import PromptServer
 
-cache = {}
+from .libs.utils import TaggedCache, any_typ
+
+root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+settings_file = os.path.join(root_dir, 'cache_settings.json')
+try:
+    with open(settings_file) as f:
+        cache_settings = json.load(f)
+except Exception as e:
+    print(e)
+    cache_settings = {}
+cache = TaggedCache(cache_settings)
 cache_count = {}
 
 
-def update_cache(k, v):
-    cache[k] = v
+def update_cache(k, tag, v):
+    cache[k] = (tag, v)
     cnt = cache_count.get(k)
     if cnt is None:
         cnt = 0
@@ -51,7 +63,7 @@ class CacheBackendData:
         if key == '*':
             print(f"[Inspire Pack] CacheBackendData: '*' is reserved key. Cannot use that key")
 
-        update_cache(key, (tag, (False, data)))
+        update_cache(key, tag, (False, data))
         return (data,)
 
 
@@ -78,7 +90,7 @@ class CacheBackendDataNumberKey:
     def doit(self, key, tag, data):
         global cache
 
-        update_cache(key, (tag, (False, data)))
+        update_cache(key, tag, (False, data))
         return (data,)
 
 
@@ -111,7 +123,7 @@ class CacheBackendDataList:
         if key == '*':
             print(f"[Inspire Pack] CacheBackendDataList: '*' is reserved key. Cannot use that key")
 
-        update_cache(key[0], (tag[0], (True, data)))
+        update_cache(key[0], tag[0], (True, data))
         return (data,)
 
 
@@ -140,7 +152,7 @@ class CacheBackendDataNumberKeyList:
 
     def doit(self, key, tag, data):
         global cache
-        update_cache(key[0], (tag[0], (True, data)))
+        update_cache(key[0], tag[0], (True, data))
         return (data,)
 
 
@@ -168,7 +180,8 @@ class RetrieveBackendData:
         v = cache.get(key)
 
         if v is None:
-            raise Exception(f"[RetrieveBackendData] '{key}' is unregistered key.")
+            print(f"[RetrieveBackendData] '{key}' is unregistered key.")
+            return (None,)
 
         is_list, data = v[1]
 
@@ -218,7 +231,7 @@ class RemoveBackendData:
         global cache
 
         if key == '*':
-            cache = {}
+            cache = TaggedCache(cache_settings)
         elif key in cache:
             del cache[key]
         else:
@@ -277,17 +290,40 @@ class ShowCachedInfo:
         text1 = "---- [String Key Caches] ----\n"
         text2 = "---- [Number Key Caches] ----\n"
         for k, v in cache.items():
-            if v[0] == '':
-                tag = 'N/A(tag)'
-            else:
-                tag = v[0]
-
+            tag = 'N/A(tag)' if v[0] == '' else v[0]
             if isinstance(k, str):
                 text1 += f'{k}: {tag}\n'
             else:
                 text2 += f'{k}: {tag}\n'
 
-        return text1 + "\n" + text2
+        text3 = "---- [TagCache Settings] ----\n"
+        for k, v in cache._tag_settings.items():
+            text3 += f'{k}: {v}\n'
+
+        for k, v in cache._data.items():
+            if k not in cache._tag_settings:
+                text3 += f'{k}: {v.maxsize}\n'
+
+        return f'{text1}\n{text2}\n{text3}'
+
+    @staticmethod
+    def set_cache_settings(data: str):
+        global cache
+        settings = data.split("---- [TagCache Settings] ----\n")[-1].strip().split("\n")
+
+        new_tag_settings = {}
+        for s in settings:
+            k, v = s.split(":")
+            new_tag_settings[k] = int(v.strip())
+        if new_tag_settings == cache._tag_settings:
+            # tag settings is not changed
+            return
+
+        # print(f'set to {new_tag_settings}')
+        new_cache = TaggedCache(new_tag_settings)
+        for k, v in cache.items():
+            new_cache[k] = v
+        cache = new_cache
 
     def doit(self, cache_info, key, unique_id):
         text = ShowCachedInfo.get_data()
@@ -329,7 +365,7 @@ class CheckpointLoaderSimpleShared(nodes.CheckpointLoaderSimple):
 
         if key not in cache or mode == 'Override Cache':
             res = self.load_checkpoint(ckpt_name)
-            update_cache(key, ("ckpt", (False, res)))
+            update_cache(key, "ckpt", (False, res))
             cache_kind = 'ckpt'
             print(f"[Inspire Pack] CheckpointLoaderSimpleShared: Ckpt '{ckpt_name}' is cached to '{key}'.")
         else:
@@ -418,7 +454,7 @@ class StableCascade_CheckpointLoader:
         if cache_mode in ['stage_b', "all"]:
             if key_b not in cache:
                 res_b = nodes.CheckpointLoaderSimple().load_checkpoint(ckpt_name=stage_b)
-                update_cache(key_b, ("ckpt", (False, res_b)))
+                update_cache(key_b, "ckpt", (False, res_b))
                 print(f"[Inspire Pack] StableCascade_CheckpointLoader: Ckpt '{stage_b}' is cached to '{key_b}'.")
             else:
                 _, (_, res_b) = cache[key_b]
@@ -430,7 +466,7 @@ class StableCascade_CheckpointLoader:
         if cache_mode in ['stage_c', "all"]:
             if key_c not in cache:
                 res_c = nodes.unCLIPCheckpointLoader().load_checkpoint(ckpt_name=stage_c)
-                update_cache(key_c, ("unclip_ckpt", (False, res_c)))
+                update_cache(key_c, "unclip_ckpt", (False, res_c))
                 print(f"[Inspire Pack] StableCascade_CheckpointLoader: Ckpt '{stage_c}' is cached to '{key_c}'.")
             else:
                 _, (_, res_c) = cache[key_c]
